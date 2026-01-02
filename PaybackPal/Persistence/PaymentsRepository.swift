@@ -1,6 +1,6 @@
 import Foundation
 
-class PaymentsRepository: ObservableObject {
+final class PaymentsRepository: ObservableObject {
     static let shared = PaymentsRepository()
     
     private let userDefaultsKey = "debtData"

@@ -1,25 +1,43 @@
 import Foundation
 import SwiftUI
+import Combine
 
 @MainActor
-class DashboardViewModel: ObservableObject {
-    @Published var repository: PaymentsRepository
-    @Published var reminderScheduler: ReminderScheduler
-    
+final class DashboardViewModel: ObservableObject {
+    // Dependencies
+    let repository: PaymentsRepository
+    let reminderScheduler: ReminderScheduler
+
+    // View state
+    @Published private(set) var debtData: DebtData
+
+    // Expose reminder state for the View
+    var hasNotificationPermission: Bool {
+        reminderScheduler.hasPermission
+    }
+
+    var remindersScheduled: Bool {
+        reminderScheduler.remindersScheduled
+    }
+
+    private var cancellables = Set<AnyCancellable>()
+
+    // MARK: - Derived UI values
+
     var currentBalance: Decimal {
-        repository.debtData.currentBalance
+        debtData.currentBalance
     }
-    
+
     var recentPayments: [Payment] {
-        repository.debtData.payments.sorted { $0.date > $1.date }
+        debtData.payments.sorted { $0.date > $1.date }
     }
-    
+
     var estimatedPayoffDate: Date? {
         let balance = currentBalance
-        let biweeklyPayment = repository.debtData.paycheckPaymentAmount
-        
+        let biweeklyPayment = debtData.paycheckPaymentAmount
+
         guard biweeklyPayment > 0 else { return nil }
-        
+
         let nextPayday = DateHelpers.nextPayday()
         return DateHelpers.estimatePayoffDate(
             balance: balance,
@@ -27,37 +45,61 @@ class DashboardViewModel: ObservableObject {
             startDate: nextPayday
         )
     }
-    
-    init(repository: PaymentsRepository = .shared, reminderScheduler: ReminderScheduler = .shared) {
+
+    // MARK: - Init
+
+    init(
+        repository: PaymentsRepository = .shared,
+        reminderScheduler: ReminderScheduler = .shared
+    ) {
         self.repository = repository
         self.reminderScheduler = reminderScheduler
+        self.debtData = repository.debtData
+
+        // Keep ViewModel state in sync with repository changes
+        repository.$debtData
+            .sink { [weak self] newData in
+                self?.debtData = newData
+            }
+            .store(in: &cancellables)
+
+        // Optional: If you find reminder status is not updating in the UI,
+        // we can also subscribe to reminderScheduler publisher changes and
+        // trigger objectWillChange, but start simple first.
     }
-    
+
+    // MARK: - Payments
+
     func addQuickPayment(_ amount: Decimal) {
         let payment = Payment(amount: amount)
         repository.addPayment(payment)
     }
-    
+
     func deletePayment(_ payment: Payment) {
         repository.deletePayment(payment)
     }
-    
+
     func updatePaycheckAmount(_ amount: Decimal) {
         repository.updatePaycheckPaymentAmount(amount)
     }
-    
+
+    // MARK: - Notifications
+
     func requestNotificationPermission() {
         Task {
             await reminderScheduler.requestPermission()
         }
     }
-    
+
     func scheduleReminders() {
-        reminderScheduler.scheduleBiweeklyReminders()
+        Task {
+            await reminderScheduler.scheduleBiweeklyReminders()
+        }
     }
-    
+
     func clearReminders() {
-        reminderScheduler.clearScheduledReminders()
+        Task {
+            await reminderScheduler.clearScheduledPaydayReminders()
+        }
     }
 }
-

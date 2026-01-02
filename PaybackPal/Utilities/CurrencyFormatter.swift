@@ -1,19 +1,19 @@
 import Foundation
 
-struct CurrencyFormatter {
+final class CurrencyFormatter {
     static let shared = CurrencyFormatter()
-    
+
     private let formatter: NumberFormatter
-    
+
     private init() {
-        formatter = NumberFormatter()
+        let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
-        formatter.locale = Locale(identifier: "en_US")
+        formatter.locale = Locale.current
+        self.formatter = formatter
     }
-    
+
     func string(from amount: Decimal) -> String {
-        return formatter.string(from: amount as NSDecimalNumber) ?? "$0.00"
+        formatter.string(from: amount as NSDecimalNumber) ?? "$0.00"
     }
 }
-
